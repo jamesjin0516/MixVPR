@@ -2,10 +2,9 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import Callback, ModelCheckpoint
 from torch.optim import lr_scheduler, optimizer
-import utils
+from . import utils
 
-from dataloaders.GSVCitiesDataloader import GSVCitiesDataModule
-from models import helper
+from .models import helper
 
 
 class VPRModel(pl.LightningModule):
@@ -224,6 +223,7 @@ class VPRModel(pl.LightningModule):
             
             
 if __name__ == '__main__':
+    from dataloaders.GSVCitiesDataloader import GSVCitiesDataModule
     pl.utilities.seed.seed_everything(seed=190223, workers=True)
         
     datamodule = GSVCitiesDataModule(
