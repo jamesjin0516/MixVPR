@@ -9,7 +9,7 @@ class MixVPRFeatureExtractor:
     def __init__(self, root, content):
         self.in_h, self.in_w = [size // 16 for size in content["resized_img_size"]]
         self.device = "cuda" if content["cuda"] else "cpu"
-        self.load_model(root, content)
+        self.agg_dim = self.load_model(root, content)
         self.img_transform = tvf.Resize((320, 320), interpolation=tvf.InterpolationMode.BICUBIC)
     
     def load_model(self, root, content):
@@ -31,7 +31,11 @@ class MixVPRFeatureExtractor:
 
         self.model.eval().to(self.device)
         print(f"Loaded MixVPR model from {content['ckpt_path']} Successfully!")
+        return self.model.agg_config["out_rows"] * self.model.agg_config["out_channels"]
     
     def __call__(self, images):
         with torch.no_grad():
             return self.model(self.img_transform(images)).detach().cpu()
+    
+    @property
+    def feature_length(self): return self.agg_dim
