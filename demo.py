@@ -43,7 +43,7 @@ class BaseDataset(data.Dataset):
 
 class InferencePipeline:
     def __init__(self, model, dataset, feature_dim, batch_size=4, num_workers=4, device='cuda'):
-        self.model = model
+        self.model = model    # only works with main.VPRModel and not mixer_top_k_vpr.VPRModel
         self.dataset = dataset
         self.feature_dim = feature_dim
         self.batch_size = batch_size
@@ -71,7 +71,7 @@ class InferencePipeline:
                 imgs = imgs.to(self.device)
 
                 # model inference
-                descriptors = self.model(imgs)
+                _, descriptors = self.model(imgs)
                 descriptors = descriptors.detach().cpu().numpy()
 
                 # add to global descriptors

@@ -77,9 +77,9 @@ class VPRModel(pl.LightningModule):
         
     # the forward pass of the lightning model
     def forward(self, x):
-        x = self.backbone(x)
-        x = self.aggregator(x)
-        return x
+        encodings = self.backbone(x)
+        descriptors = self.aggregator(encodings)
+        return encodings, descriptors
     
     # configure the optimizer 
     def configure_optimizers(self):
@@ -156,7 +156,7 @@ class VPRModel(pl.LightningModule):
         labels = labels.view(-1)
 
         # Feed forward the batch to the model
-        descriptors = self(images) # Here we are calling the method forward that we defined above
+        _, descriptors = self(images) # Here we are calling the method forward that we defined above
         loss = self.loss_function(descriptors, labels) # Call the loss_function we defined above
         
         self.log('loss', loss.item(), logger=True)
@@ -172,7 +172,7 @@ class VPRModel(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=None):
         places, _ = batch
         # calculate descriptors
-        descriptors = self(places)
+        _, descriptors = self(places)
         return descriptors.detach().cpu()
     
     def validation_epoch_end(self, val_step_outputs):

@@ -6,13 +6,13 @@ from .main import VPRModel
 
 class MixVPRFeatureExtractor:
 
-    def __init__(self, root, content):
+    def __init__(self, root, content, pipeline=False):
         self.in_h, self.in_w = [size // 16 for size in content["resized_img_size"]]
         self.device = "cuda" if content["cuda"] else "cpu"
-        self.agg_dim = self.load_model(root, content)
+        self.agg_dim = self.load_model(root, content, pipeline)
         self.img_transform = tvf.Resize((320, 320), interpolation=tvf.InterpolationMode.BICUBIC)
     
-    def load_model(self, root, content):
+    def load_model(self, root, content, pipeline):
         # Note that images must be resized to 320x320
         self.model = VPRModel(backbone_arch='resnet50',
                         layers_to_crop=[4],
@@ -26,7 +26,8 @@ class MixVPRFeatureExtractor:
                                     'out_rows': 4},
                         )
 
-        state_dict = torch.load(join(root, content["ckpt_path"]), map_location=self.device)
+        state_dict = torch.load(join(root, join(content["ckpt_path"], "model_best.pth") if pipeline
+                                     else content["ckpt_path"]), map_location=self.device)
         self.model.load_state_dict(state_dict)
 
         self.model.eval().to(self.device)
@@ -35,7 +36,8 @@ class MixVPRFeatureExtractor:
     
     def __call__(self, images):
         with torch.no_grad():
-            return self.model(self.img_transform(images)).detach().cpu()
+            encodings, descriptors = self.model(self.img_transform(images))
+            return encodings.detach().cpu(), descriptors.detach().cpu()
     
     @property
     def feature_length(self): return self.agg_dim
