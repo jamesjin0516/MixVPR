@@ -57,10 +57,11 @@ class MixVPRFeatureExtractor:
     def set_train(self, is_train):
         self.model.train(is_train)
     
-    def torch_compile(self, float32=False, **compile_args):
+    def torch_compile(self, **compile_args):
         self.model = torch.compile(self.model, **compile_args)
-        if float32:
-            self.model.to(torch.float32)
+    
+    def set_float32(self):
+        self.model.to(torch.float32)
     
     def save_state(self, save_path, new_state):
         new_state["state_dict"] = self.model.state_dict()
