@@ -10,7 +10,7 @@ class MixVPRFeatureExtractor:
     def __init__(self, root, content, pipeline=False):
         self.device = "cuda" if content["cuda"] else "cpu"
         self.saved_state, self.agg_dim = self.load_model(root, content, pipeline)
-        self.img_transform = tvf.Resize(self.saved_state["img_size"], interpolation=tvf.InterpolationMode.BICUBIC)
+        self.img_transform = tvf.Resize(self.saved_state["img_size"], antialias=None, interpolation=tvf.InterpolationMode.BICUBIC)
     
     def load_model(self, root, content, pipeline):
         # Load weights at specified path, add # of epochs trained, best recall rate, and input image size if missing
@@ -18,6 +18,13 @@ class MixVPRFeatureExtractor:
                                      else content["ckpt_path"]), map_location=self.device)
         if saved_state.keys() != {"epoch", "best_score", "state_dict", "img_size"}:
             saved_state = {"epoch": 0, "best_score": 0, "state_dict": saved_state, "img_size": content["pt_img_size"]}
+        # Remove module prefix from state dict
+        state_dict_keys = list(saved_state["state_dict"].keys())
+        for state_key in state_dict_keys:
+            if state_key.startswith("module"):
+                new_key = state_key.removeprefix("module.")
+                saved_state["state_dict"][new_key] = saved_state["state_dict"][state_key]
+                del saved_state["state_dict"][state_key]
         img_size = saved_state["img_size"] if "img_size" not in content else content["img_size"]
         ignore_agg = img_size[0] != saved_state["img_size"][0] or img_size[1] != saved_state["img_size"][1]
 
@@ -40,7 +47,7 @@ class MixVPRFeatureExtractor:
             for weight_name in agg_parts:
                 del saved_state["state_dict"][weight_name]
             missing_keys, unexpected_keys = self.model.load_state_dict(saved_state["state_dict"], strict=False)
-            if (agg_set:=set(agg_key.lstrip("_orig_mod") for agg_key in agg_parts)) != (missing_set:=set(missing_keys)) or len(unexpected_keys) > 0:
+            if (agg_set:=set(agg_key.removeprefix("_orig_mod") for agg_key in agg_parts)) != (missing_set:=set(missing_keys)) or len(unexpected_keys) > 0:
                 raise RuntimeError(f"MixVPR state dict missing keys: {missing_set.difference(agg_set)}\nUnexpected keys: {unexpected_keys}")
         else:
             self.model.load_state_dict(saved_state["state_dict"])
@@ -59,6 +66,9 @@ class MixVPRFeatureExtractor:
     
     def torch_compile(self, **compile_args):
         self.model = torch.compile(self.model, **compile_args)
+    
+    def set_parallel(self):
+        self.model = torch.nn.DataParallel(self.model)
     
     def set_float32(self):
         self.model.to(torch.float32)
