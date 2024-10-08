@@ -1,9 +1,23 @@
+import cv2
+import itertools
 import math
+import numpy as np
 from os.path import join
 import torch
 import torchvision.transforms as tvf
 
 from .main import VPRModel
+
+
+# Code from https://github.com/jacobgil/vit-explain/
+def show_mask_on_image(img, mask):
+    img = np.float32(img) / 255
+    heatmap = cv2.applyColorMap(np.uint8(255 * mask), cv2.COLORMAP_JET)
+    heatmap = np.float32(heatmap) / 255
+    cam = 0.7 * heatmap + np.float32(img)
+    cam = cam / np.max(cam)
+    return np.uint8(255 * cam)
+
 
 class MixVPRFeatureExtractor:
 
@@ -60,6 +74,30 @@ class MixVPRFeatureExtractor:
     def __call__(self, images):
         encodings, descriptors = self.model(self.img_transform(images))
         return encodings, descriptors
+    
+    def generate_heatmap(self, image, input_tensor, num_mask=30):
+        resized = self.img_transform(input_tensor).to(self.device)
+        _, unmasked_desc = self.model(resized)
+        height_bounds = torch.linspace(0, resized.shape[-2], num_mask + 1, dtype=torch.int)
+        width_bounds = torch.linspace(0, resized.shape[-1], num_mask + 1, dtype=torch.int)
+        masked_imgs = torch.empty((num_mask ** 2, *resized.shape[1:])).to(self.device)
+        for img_ind, (h_ind, w_ind) in enumerate(itertools.product(range(num_mask), repeat=2)):
+            masked_imgs[img_ind] = resized[0]
+            top_bound, bot_bound = height_bounds[h_ind], height_bounds[h_ind + 1]
+            left_bound, right_bound = width_bounds[w_ind], width_bounds[w_ind + 1]
+            masked_imgs[img_ind, :, top_bound : bot_bound, left_bound : right_bound] = 0
+        masked_descs = torch.empty((masked_imgs.shape[0], self.feature_length)).to(self.device)
+        for i in range(0, masked_imgs.shape[0], 200):
+            _, descs = self.model(masked_imgs[i: min(i + 200, masked_imgs.shape[0])])
+            masked_descs[i: min(i + 200, masked_imgs.shape[0])] = descs
+        diff_with_unmasked = torch.nn.PairwiseDistance()(unmasked_desc.expand(masked_descs.shape), masked_descs)
+        diff_grid = diff_with_unmasked.reshape(num_mask, num_mask).cpu().numpy()
+        activations = diff_grid / np.max(diff_grid)
+        activation_base = image.resize(self.saved_state["img_size"])
+        np_img = np.array(activation_base)[:, :, ::-1]
+        mask = cv2.resize(activations, (np_img.shape[1], np_img.shape[0]))
+        activations_map = show_mask_on_image(np_img, mask)
+        return activations_map
     
     def set_train(self, is_train):
         self.model.train(is_train)
